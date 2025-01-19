@@ -1,101 +1,86 @@
-import Image from "next/image";
+"use client";
+import dynamic from 'next/dynamic';
+import { KSG_MINT_ADDRESS, program } from "@/anchor/setup";
+import * as anchor from "@coral-xyz/anchor";
+import { useWalletMultiButton } from "@solana/wallet-adapter-base-ui";
+// import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+const WalletMultiButton = dynamic(
+  () => import('@solana/wallet-adapter-react-ui').then((mod) => mod.WalletMultiButton),
+  { ssr: false }
+);
+import { useMemo, useState } from "react";
+import { getOrCreateAssociatedTokenAccount, processTxInToast } from "@/utils";
+import { promiseToast, showToast } from "@/utils/toast";
+import { PublicKey } from "@solana/web3.js";
+import { useWallet } from "@solana/wallet-adapter-react";
+
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const { publicKey, buttonState } = useWalletMultiButton({ onSelectWallet() { }, });
+  const { sendTransaction } = useWallet();
+  const [recipientAddress, setRecipientAddress] = useState("")
+  const [amount, setAmount] = useState(0)
+  const LABELS = {
+    'change-wallet': 'Change wallet',
+    connecting: 'Connecting ...',
+    'copy-address': 'Copy address',
+    copied: 'Copied',
+    disconnect: 'Disconnect',
+    'has-wallet': 'Connect',
+    'no-wallet': 'Select Wallet',
+  } as const;
+  const content = useMemo(() => {
+    if (publicKey) {
+      const base58 = publicKey.toBase58();
+      return base58.slice(0, 3) + '..' + base58.slice(-3);
+    } else if (buttonState === 'connecting' || buttonState === 'has-wallet') {
+      return LABELS[buttonState];
+    } else {
+      return LABELS['no-wallet'];
+    }
+  }, [buttonState, publicKey]);
+  const transferToken = async () => {
+    if (!publicKey) {
+      showToast("Connect wallet", "warn")
+      return
+    }
+    if (recipientAddress.trim() === "") {
+      showToast("Input correct address", "error")
+      return
+    }
+    if (amount <= 0) {
+      showToast("Input correct amount", "warn")
+      return
+    }
+    const fromAta = await getOrCreateAssociatedTokenAccount(publicKey, new PublicKey(publicKey), new PublicKey(KSG_MINT_ADDRESS), sendTransaction)
+    const toAta = await getOrCreateAssociatedTokenAccount(publicKey, new PublicKey(recipientAddress), new PublicKey(KSG_MINT_ADDRESS), sendTransaction)
+    promiseToast(new Promise(async (resolve, reject) => {
+      const tx = await program.methods.transferToken(new anchor.BN(`${amount * 1000000}`)).accounts({
+        from: publicKey,
+        fromAta,
+        toAta,
+      }).transaction()
+      await processTxInToast(tx, sendTransaction, resolve, reject)
+    }), {
+      pending: `Opening wallet...`,
+      error: "Your operation failed."
+    })
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  }
+  return (
+    <div className="flex flex-col justify-center items-center p-10 gap-8 font-[family-name:var(--font-geist-sans)]">
+      <WalletMultiButton style={{ backgroundImage: "linear-gradient(rgb(38, 210, 160), rgb(2, 126, 90))" }} endIcon={
+        publicKey ? <img className="rounded-full" src={`https://i.pravatar.cc/150?u=${publicKey}`} alt="Logo" /> : undefined
+      }>
+        {content}
+      </WalletMultiButton>
+      <div className="w-full max-w-2xl flex flex-col justify-center items-center gap-6">
+        <div className="w-full flex items-center gap-2">
+          <input onChange={e => setRecipientAddress(e.target.value)} value={recipientAddress} placeholder="Enter Address" className="w-full bg-[#010101] border border-[#1B1B1D] p-4 rounded-xl" />
+          <input onChange={e => setAmount(Number(e.target.value))} value={amount} type="number" placeholder="Enter Amount" className="w-full bg-[#010101] border border-[#1B1B1D] p-4 rounded-xl" />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        <button onClick={transferToken} className="bg-blue-500 p-2 rounded-md hover:opacity-50 transition-all ease-in-out">Transfer Token</button>
+      </div>
     </div>
   );
 }

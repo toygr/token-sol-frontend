@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+idl.ts
 /.pnp
 .pnp.*
 .yarn/*
