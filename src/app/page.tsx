@@ -1,6 +1,6 @@
 "use client";
 import dynamic from 'next/dynamic';
-import { KSG_MINT_ADDRESS, program } from "@/anchor/setup";
+import { connection, KSG_MINT_ADDRESS, program } from "@/anchor/setup";
 import * as anchor from "@coral-xyz/anchor";
 import { useWalletMultiButton } from "@solana/wallet-adapter-base-ui";
 // import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
@@ -8,7 +8,7 @@ const WalletMultiButton = dynamic(
   () => import('@solana/wallet-adapter-react-ui').then((mod) => mod.WalletMultiButton),
   { ssr: false }
 );
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getOrCreateAssociatedTokenAccount, processTxInToast } from "@/utils";
 import { promiseToast, showToast } from "@/utils/toast";
 import { PublicKey } from "@solana/web3.js";
@@ -20,6 +20,7 @@ export default function Home() {
   const { sendTransaction } = useWallet();
   const [recipientAddress, setRecipientAddress] = useState("")
   const [amount, setAmount] = useState(0)
+  const [balance, setBalance] = useState("0")
   const LABELS = {
     'change-wallet': 'Change wallet',
     connecting: 'Connecting ...',
@@ -39,6 +40,19 @@ export default function Home() {
       return LABELS['no-wallet'];
     }
   }, [buttonState, publicKey]);
+  const updateBalance = (publicKey: PublicKey) => {
+    getOrCreateAssociatedTokenAccount(publicKey, new PublicKey(publicKey), new PublicKey(KSG_MINT_ADDRESS), sendTransaction).then(ata =>
+      connection.getTokenAccountBalance(ata).then(v => setBalance(v.value.uiAmountString || "")
+      )
+    )
+  }
+  useEffect(() => {
+    if (!publicKey) {
+      setBalance("")
+      return
+    }
+    updateBalance(publicKey)
+  }, [publicKey])
   const transferToken = async () => {
     if (!publicKey) {
       showToast("Connect wallet", "warn")
@@ -75,6 +89,7 @@ export default function Home() {
         {content}
       </WalletMultiButton>
       <div className="w-full max-w-2xl flex flex-col justify-center items-center gap-6">
+        {balance}
         <div className="w-full flex items-center gap-2">
           <input onChange={e => setRecipientAddress(e.target.value)} value={recipientAddress} placeholder="Enter Address" className="w-full bg-[#010101] border border-[#1B1B1D] p-4 rounded-xl" />
           <input onChange={e => setAmount(Number(e.target.value))} value={amount} type="number" placeholder="Enter Amount" className="w-full bg-[#010101] border border-[#1B1B1D] p-4 rounded-xl" />
